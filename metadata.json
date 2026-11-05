@@ -1,0 +1,6 @@
+{
+  "name": "CDSure Tasks",
+  "description": "Paid Daily Tasks and Referral Platform. Earn daily by completing simple tasks, check-ins, and inviting friends with instant referral rewards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

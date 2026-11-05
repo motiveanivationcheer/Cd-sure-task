@@ -1,0 +1,745 @@
+<!-- CDSure Tasks - Standalone Single File Deployment for Cloudflare Pages -->
+<!-- Pure HTML/JS with Firebase v10 CDN, Tailwind CDN, and Direct Bank Transfer -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CDSure Tasks - Paid Daily Tasks Platform</title>
+    <meta name="description" content="CDSure Tasks - Paid Daily Tasks & Referral Platform. Complete daily tasks and earn ₦200 per invite." />
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                green: '#00C853',
+                greenHover: '#00b248',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-[#00C853] selection:text-black">
+    <!-- Navbar -->
+    <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+      <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-[#00C853] flex items-center justify-center font-black text-slate-950 text-lg shadow-lg shadow-[#00C853]/20">
+            ⚡
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-extrabold text-lg text-white">CDSure Tasks</span>
+              <span class="text-[10px] font-bold uppercase bg-[#00C853]/15 text-[#00C853] px-2 py-0.5 rounded border border-[#00C853]/30">D1</span>
+            </div>
+            <p class="text-[11px] text-slate-400 hidden sm:block">Paid Daily Tasks Platform</p>
+          </div>
+        </div>
+
+        <div id="nav-user-container" class="hidden items-center gap-3">
+          <div id="nav-badge" class="text-xs px-2.5 py-1 rounded-full border border-[#00C853]/30 text-[#00C853] bg-[#00C853]/10 font-semibold hidden md:block">
+            Activated
+          </div>
+          <div class="bg-slate-900 border border-[#00C853]/30 px-3 py-1.5 rounded-xl text-left">
+            <div class="text-[9px] uppercase font-bold text-slate-400">Balance</div>
+            <div id="nav-balance" class="text-sm font-black text-[#00C853]">₦0</div>
+          </div>
+          <button id="btn-logout" class="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg text-xs font-semibold">
+            Logout
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-6xl mx-auto px-4 py-8">
+      <!-- Loading State -->
+      <div id="state-loading" class="flex flex-col items-center justify-center py-20">
+        <div class="w-10 h-10 border-4 border-[#00C853] border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-slate-300 font-semibold text-sm">Connecting to CDSure Tasks...</p>
+      </div>
+
+      <!-- State: Auth (Login & Signup & Forgot Password) -->
+      <section id="state-auth" class="hidden max-w-md mx-auto">
+        <div id="ref-banner" class="hidden mb-4 bg-slate-900 border border-[#00C853]/40 p-3.5 rounded-2xl flex items-center gap-3">
+          <span class="text-2xl">🎁</span>
+          <div>
+            <p class="text-xs text-slate-300">Invited with code <span id="ref-banner-code" class="font-mono font-bold text-[#00C853]"></span></p>
+            <p class="text-[11px] text-slate-400">Register now to claim your welcome benefits.</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+          <div class="text-center mb-6">
+            <h1 id="auth-title" class="text-2xl font-extrabold text-white">Join CDSure Tasks</h1>
+            <p class="text-xs text-slate-400 mt-1">Earn Daily Cash & ₦200 per Invite</p>
+          </div>
+
+          <div id="auth-tabs" class="grid grid-cols-2 p-1 bg-slate-950 rounded-xl mb-6 border border-slate-800 text-xs font-bold">
+            <button id="tab-register" class="py-2 rounded-lg bg-[#00C853] text-slate-950 font-extrabold">Register</button>
+            <button id="tab-login" class="py-2 rounded-lg text-slate-400 hover:text-white">Sign In</button>
+          </div>
+
+          <div id="auth-error" class="hidden mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-300 text-xs"></div>
+          <div id="auth-success" class="hidden mb-4 p-3 rounded-xl bg-emerald-950/60 border border-[#00C853]/40 text-emerald-200 text-xs"></div>
+
+          <form id="auth-form" class="space-y-3.5">
+            <div id="field-name">
+              <label class="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
+              <input id="input-name" type="text" placeholder="e.g. Samuel Adekunle" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00C853]" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-300 mb-1">Email</label>
+              <input id="input-email" type="email" required placeholder="yourname@gmail.com" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00C853]" />
+            </div>
+            <div id="field-password">
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-xs font-medium text-slate-300">Password</label>
+                <button type="button" id="btn-forgot-mode" class="text-xs text-[#00C853] hover:underline hidden">Forgot Password?</button>
+              </div>
+              <input id="input-password" type="password" placeholder="••••••••" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00C853]" />
+            </div>
+            <div id="field-confirm-password">
+              <label class="block text-xs font-medium text-slate-300 mb-1">Confirm Password</label>
+              <input id="input-confirm-password" type="password" placeholder="••••••••" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00C853]" />
+            </div>
+            <div id="field-referral">
+              <label class="block text-xs font-medium text-slate-300 mb-1">Referral Code (Optional)</label>
+              <input id="input-referral" type="text" placeholder="e.g. CD8F29A" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm font-mono uppercase text-[#00C853] focus:outline-none focus:border-[#00C853]" />
+            </div>
+            <div id="field-terms" class="flex items-start gap-2 pt-1">
+              <input type="checkbox" id="check-terms" checked class="mt-1 accent-[#00C853]" />
+              <label for="check-terms" class="text-xs text-slate-400">I agree to CDSure Tasks Terms of Service.</label>
+            </div>
+            <button id="btn-submit-auth" type="submit" class="w-full bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-extrabold py-3 px-4 rounded-xl shadow-lg transition-all">
+              Create Account
+            </button>
+            <button id="btn-cancel-forgot" type="button" class="w-full text-xs text-slate-400 hover:text-white hidden py-2">
+              Back to Sign In
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- State: Activate (/activate - 3 Steps: [1. Pay] [2. Upload Proof] [3. Confirm Code]) -->
+      <section id="state-activate" class="hidden max-w-xl mx-auto">
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+          <div class="text-center mb-6">
+            <span class="inline-block px-3 py-1 bg-[#00C853]/10 text-[#00C853] border border-[#00C853]/30 text-xs font-bold rounded-full mb-3">
+              One-Time Lifetime Membership ₦1,500
+            </span>
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-white">Activate Your CDSure Account</h1>
+            <p class="text-xs text-slate-400 mt-2">
+              Transfer <strong class="text-[#00C853]">₦1,500</strong> to the official bank account below, upload your payment screenshot, and confirm the code.
+            </p>
+          </div>
+
+          <!-- 3 Steps Indicator -->
+          <div class="grid grid-cols-3 gap-2 mb-6 text-center text-xs font-bold">
+            <div id="step-badge-1" class="p-2.5 rounded-xl border bg-[#00C853]/15 border-[#00C853] text-[#00C853]">1. Bank Transfer</div>
+            <div id="step-badge-2" class="p-2.5 rounded-xl border bg-slate-950 border-slate-800 text-slate-500">2. Upload Proof</div>
+            <div id="step-badge-3" class="p-2.5 rounded-xl border bg-slate-950 border-slate-800 text-slate-500">3. Confirm Code</div>
+          </div>
+
+          <div id="activate-msg" class="hidden mb-4 p-3 rounded-xl text-xs"></div>
+
+          <!-- Step 1: Pay (Bank Transfer) -->
+          <div id="step-pay-container" class="space-y-4">
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="text-xs text-slate-400 font-semibold uppercase">Activation Fee</div>
+                <div class="text-3xl font-black text-[#00C853]">₦1,500</div>
+              </div>
+              <div class="text-xs font-bold text-[#00C853] bg-[#00C853]/10 px-3 py-1 rounded-lg border border-[#00C853]/30">
+                Bank Transfer
+              </div>
+            </div>
+
+            <!-- Bank Details Box -->
+            <div class="bg-slate-950 border-2 border-[#00C853]/40 rounded-2xl p-4 space-y-3">
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Bank Name</span>
+                <span class="text-sm font-bold text-white">SmartCash PSB (Airtel SmartCash)</span>
+              </div>
+              <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span class="text-[10px] text-slate-400 uppercase font-bold block">Account Number</span>
+                  <span id="standalone-acc-num" class="text-2xl font-mono font-extrabold text-[#00C853] tracking-wider">8024138981</span>
+                </div>
+                <button type="button" id="btn-copy-acc" class="bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs px-3 py-2 rounded-lg border border-slate-700">
+                  Copy
+                </button>
+              </div>
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Account Name</span>
+                <span class="text-sm font-bold text-white">USMAN ABDULLAHI</span>
+              </div>
+            </div>
+
+            <button id="btn-proceed-proof" class="w-full bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-extrabold py-3.5 px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+              <span>I Have Transferred ₦1,500 — Proceed to Upload Proof</span>
+            </button>
+          </div>
+
+          <!-- Step 2: Upload Proof -->
+          <form id="step-proof-container" class="hidden space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-white mb-1">Bank Transfer Reference / Session ID (Optional)</label>
+              <input id="proof-ref" type="text" placeholder="e.g. USMAN / Bank Session Ref" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-white mb-1">Payment Screenshot Proof (JPG/PNG)</label>
+              <input id="proof-file" type="file" accept="image/*" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-[#00C853] file:text-black font-semibold" />
+            </div>
+            <button type="submit" class="w-full bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-extrabold py-3 rounded-xl text-xs">
+              Upload Proof & Send Code
+            </button>
+          </form>
+
+          <!-- Step 3: Confirm Code -->
+          <form id="step-code-container" class="hidden space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-white mb-1">6-Digit Confirmation Code</label>
+              <input id="confirm-code" type="text" maxlength="6" required placeholder="123456" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-center text-lg font-mono tracking-widest text-[#00C853]" />
+              <p class="text-[11px] text-slate-500 mt-1">Code sent to your email. Expires in 30 minutes.</p>
+            </div>
+            <button type="submit" class="w-full bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-extrabold py-3 rounded-xl text-xs">
+              Confirm Code & Enter Dashboard
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- State: Dashboard -->
+      <section id="state-dashboard" class="hidden space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-slate-900 border border-[#00C853]/40 rounded-2xl p-5 shadow-lg">
+            <div class="text-xs uppercase text-[#00C853] font-bold">Available Balance</div>
+            <div id="dash-balance" class="text-3xl font-black text-white mt-2">₦0</div>
+            <button id="btn-open-withdraw" class="mt-3 w-full bg-[#00C853] hover:bg-[#00b248] text-slate-950 text-xs font-extrabold py-2 rounded-xl transition-all">
+              Withdraw to Bank
+            </button>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div class="text-xs uppercase text-slate-400 font-bold">Total Earned</div>
+            <div id="dash-total" class="text-3xl font-black text-white mt-2">₦0</div>
+            <p class="text-xs text-slate-500 mt-2">Tasks & referrals combined</p>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div class="text-xs uppercase text-slate-400 font-bold">Referral Earnings</div>
+            <div id="dash-referral-earnings" class="text-3xl font-black text-amber-400 mt-2">₦0</div>
+            <p id="dash-referral-count" class="text-xs text-slate-500 mt-2">0 referrals active</p>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div class="text-xs uppercase text-slate-400 font-bold">Today's Tasks</div>
+            <div id="dash-tasks-done" class="text-3xl font-black text-white mt-2">0 / 4</div>
+            <p id="dash-timer" class="text-xs text-slate-500 mt-2">Resets daily at 00:00 UTC</p>
+          </div>
+        </div>
+
+        <div id="expiry-banner" class="bg-slate-900 border border-slate-800 p-4 rounded-2xl text-xs flex justify-between items-center">
+          <div>
+            <strong class="text-white">Daily 1-Hour Expiry Rule:</strong>
+            <span class="text-slate-400 ml-1">Tasks reset at midnight UTC. Submit screenshot proof at least 1 hour before expiry.</span>
+          </div>
+          <span id="banner-timer" class="font-mono text-[#00C853] font-bold">--:--:--</span>
+        </div>
+
+        <div class="bg-slate-900 border border-[#00C853]/40 rounded-3xl p-6">
+          <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <span class="text-xs font-bold text-[#00C853] bg-[#00C853]/10 px-2.5 py-0.5 rounded-full border border-[#00C853]/20">₦200 Instant Cash Bonus</span>
+              <h2 class="text-xl font-extrabold text-white mt-1">Your Referral Link</h2>
+              <p class="text-xs text-slate-400 mt-1">Share with friends. Earn ₦200 instantly as soon as they activate!</p>
+            </div>
+            <div class="w-full md:w-auto flex items-center gap-2">
+              <input id="dash-ref-link" readonly class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-[#00C853] font-mono w-full md:w-64" />
+              <button id="btn-copy-ref" class="bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-bold px-3 py-2 rounded-xl text-xs shrink-0">
+                Copy
+              </button>
+              <button id="btn-share-wa" class="bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-bold px-3 py-2 rounded-xl text-xs shrink-0">
+                WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-lg font-bold text-white mb-3">Daily Tasks</h3>
+          <div id="tasks-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Task Submission Modal -->
+    <div id="modal-task" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 relative">
+        <div class="flex justify-between items-center mb-4">
+          <h3 id="modal-task-title" class="font-bold text-white text-base">Submit Task Proof</h3>
+          <button id="btn-close-task-modal" class="text-slate-400 hover:text-white">✕</button>
+        </div>
+        <p id="modal-task-desc" class="text-xs text-slate-400 mb-4"></p>
+        <form id="form-task-proof" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Upload Screenshot Proof</label>
+            <input id="input-task-proof" type="file" accept="image/*" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-[#00C853] file:text-black font-semibold" />
+          </div>
+          <button type="submit" class="w-full bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-extrabold py-3 rounded-xl text-xs">
+            Confirm & Submit Screenshot
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Withdraw Modal -->
+    <div id="modal-withdraw" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 relative">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-white text-base">Withdraw to Bank</h3>
+          <button id="btn-close-withdraw" class="text-slate-400 hover:text-white">✕</button>
+        </div>
+        <form id="form-withdraw" class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Select Bank</label>
+            <select id="w-bank" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+              <option>OPay (PayCom)</option>
+              <option>PalmPay</option>
+              <option>Kuda Bank</option>
+              <option>Moniepoint MFB</option>
+              <option>Access Bank</option>
+              <option>Guaranty Trust Bank (GTBank)</option>
+              <option>Zenith Bank</option>
+              <option>First Bank of Nigeria</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Account Number (10 Digits)</label>
+            <input id="w-account" type="text" maxlength="10" required placeholder="0123456789" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Account Name</label>
+            <input id="w-name" type="text" required placeholder="Account Holder Name" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Amount (₦)</label>
+            <input id="w-amount" type="number" min="500" value="1000" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-bold" />
+          </div>
+          <button type="submit" class="w-full bg-[#00C853] hover:bg-[#00b248] text-slate-950 font-extrabold py-3 rounded-xl text-xs">
+            Confirm Payout
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Firebase v10 + Vanilla App Module -->
+    <script type="module">
+      import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+      import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyCOmIA6jTV6rmYMdM4x_YvvqkDCKeS1TpA",
+        authDomain: "cdsure-c360f.firebaseapp.com",
+        projectId: "cdsure-c360f",
+        storageBucket: "cdsure-c360f.firebasestorage.app",
+        messagingSenderId: "693345890442",
+        appId: "1:693345890442:web:e9ff28259a2286460dfd73",
+        measurementId: "G-KFK51EVS67"
+      };
+
+      const FLW_PUBLIC_KEY = "FLWPUBK_TEST-bdb2922acf33b37d13e5ab11db0e35e0-X";
+
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      let currentUser = null;
+      let authMode = 'signup';
+      let activeTaskForModal = null;
+
+      // URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const refCode = urlParams.get('ref');
+      if (refCode) {
+        localStorage.setItem('cdsure_referral_code', refCode.trim().toUpperCase());
+        document.getElementById('ref-banner').classList.remove('hidden');
+        document.getElementById('ref-banner-code').innerText = refCode.trim().toUpperCase();
+        document.getElementById('input-referral').value = refCode.trim().toUpperCase();
+      }
+
+      function showState(state) {
+        document.getElementById('state-loading').classList.add('hidden');
+        document.getElementById('state-auth').classList.add('hidden');
+        document.getElementById('state-activate').classList.add('hidden');
+        document.getElementById('state-dashboard').classList.add('hidden');
+
+        if (state === 'auth') {
+          document.getElementById('state-auth').classList.remove('hidden');
+          document.getElementById('nav-user-container').classList.add('hidden');
+        } else if (state === 'activate') {
+          document.getElementById('state-activate').classList.remove('hidden');
+          document.getElementById('nav-user-container').classList.remove('hidden');
+          document.getElementById('nav-badge').innerText = 'Needs ₦1,500';
+          document.getElementById('nav-badge').className = 'text-xs px-2.5 py-1 rounded-full border border-amber-500/30 text-amber-400 bg-amber-950/40 font-semibold';
+        } else if (state === 'dashboard') {
+          document.getElementById('state-dashboard').classList.remove('hidden');
+          document.getElementById('nav-user-container').classList.remove('hidden');
+          document.getElementById('nav-badge').innerText = 'Activated';
+          document.getElementById('nav-badge').className = 'text-xs px-2.5 py-1 rounded-full border border-[#00C853]/30 text-[#00C853] bg-[#00C853]/10 font-semibold';
+        }
+      }
+
+      async function syncUserWithD1(token, uid, email, name) {
+        const storedRef = localStorage.getItem('cdsure_referral_code') || '';
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken: token,
+              referredBy: storedRef,
+              mockUid: uid,
+              mockEmail: email,
+              fullName: name,
+            })
+          });
+          const d = await res.json();
+          if (d.user) {
+            currentUser = d.user;
+            renderUser();
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      function renderUser() {
+        if (!currentUser) return;
+        document.getElementById('nav-balance').innerText = `₦${(currentUser.balance || 0).toLocaleString()}`;
+        document.getElementById('dash-balance').innerText = `₦${(currentUser.balance || 0).toLocaleString()}`;
+        document.getElementById('dash-total').innerText = `₦${(currentUser.total_earned || 0).toLocaleString()}`;
+        document.getElementById('dash-referral-earnings').innerText = `₦${(currentUser.referral_earnings || 0).toLocaleString()}`;
+
+        const code = currentUser.referral_code || currentUser.uid.substring(0, 6).toUpperCase();
+        document.getElementById('dash-ref-link').value = `${window.location.origin}/?ref=${code}`;
+
+        if (currentUser.is_activated === 0) {
+          showState('activate');
+        } else {
+          showState('dashboard');
+          loadDashboardData();
+          loadTasks();
+        }
+      }
+
+      async function loadTasks() {
+        if (!currentUser) return;
+        const res = await fetch(`/api/tasks?uid=${currentUser.uid}`);
+        const data = await res.json();
+        const container = document.getElementById('tasks-container');
+        container.innerHTML = '';
+
+        let doneCount = 0;
+        (data.tasks || []).forEach(t => {
+          if (t.completed) doneCount++;
+          const card = document.createElement('div');
+          card.className = `p-5 rounded-2xl border ${t.completed ? 'bg-slate-950 border-slate-800' : 'bg-slate-900 border-slate-800'}`;
+          card.innerHTML = `
+            <div class="flex justify-between items-start">
+              <div>
+                <h4 class="font-bold text-white">${t.title}</h4>
+                <p class="text-xs text-slate-400 mt-1">${t.instructions || ''}</p>
+              </div>
+              <span class="text-base font-black text-[#00C853] shrink-0 ml-3">+₦${t.reward}</span>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center">
+              <span class="text-[11px] text-slate-500">${t.completed ? 'Proof recorded' : 'Screenshot proof required'}</span>
+              <button data-id="${t.id}" class="btn-open-task px-3.5 py-1.5 rounded-xl text-xs font-bold ${t.completed ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-[#00C853] hover:bg-[#00b248] text-slate-950'}">
+                ${t.completed ? 'Completed Today ✓' : 'Submit Proof'}
+              </button>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+
+        document.getElementById('dash-tasks-done').innerText = `${doneCount} / ${(data.tasks || []).length}`;
+
+        document.querySelectorAll('.btn-open-task').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const taskId = e.currentTarget.getAttribute('data-id');
+            const targetTask = (data.tasks || []).find(x => x.id === taskId);
+            if (targetTask && !targetTask.completed) {
+              activeTaskForModal = targetTask;
+              document.getElementById('modal-task-title').innerText = targetTask.title;
+              document.getElementById('modal-task-desc').innerText = targetTask.instructions || '';
+              if (targetTask.link) window.open(targetTask.link, '_blank');
+              document.getElementById('modal-task').classList.remove('hidden');
+            }
+          });
+        });
+      }
+
+      async function loadDashboardData() {
+        if (!currentUser) return;
+        const res = await fetch(`/api/dashboard?uid=${currentUser.uid}`);
+        const data = await res.json();
+        if (data.user) {
+          currentUser = data.user;
+          document.getElementById('nav-balance').innerText = `₦${currentUser.balance.toLocaleString()}`;
+          document.getElementById('dash-balance').innerText = `₦${currentUser.balance.toLocaleString()}`;
+          document.getElementById('dash-total').innerText = `₦${currentUser.total_earned.toLocaleString()}`;
+          document.getElementById('dash-referral-earnings').innerText = `₦${currentUser.referral_earnings.toLocaleString()}`;
+        }
+        document.getElementById('dash-referral-count').innerText = `${data.referralCount || 0} referrals active`;
+      }
+
+      // Copy account number button
+      document.getElementById('btn-copy-acc').onclick = () => {
+        navigator.clipboard.writeText('8024138981');
+        const btn = document.getElementById('btn-copy-acc');
+        btn.innerText = 'Copied!';
+        btn.classList.add('bg-[#00C853]', 'text-slate-950');
+        setTimeout(() => {
+          btn.innerText = 'Copy';
+          btn.classList.remove('bg-[#00C853]', 'text-slate-950');
+        }, 2000);
+      };
+
+      // Proceed to proof button
+      document.getElementById('btn-proceed-proof').onclick = () => {
+        const txRef = `CDSURE_BANK_${Date.now()}_${currentUser?.uid || 'user'}`;
+        document.getElementById('proof-ref').value = txRef;
+        document.getElementById('step-pay-container').classList.add('hidden');
+        document.getElementById('step-proof-container').classList.remove('hidden');
+        document.getElementById('step-badge-1').className = 'p-2.5 rounded-xl border bg-slate-950 border-slate-800 text-slate-500';
+        document.getElementById('step-badge-2').className = 'p-2.5 rounded-xl border bg-[#00C853]/15 border-[#00C853] text-[#00C853]';
+      };
+
+      // Proof form submit
+      document.getElementById('step-proof-container').onsubmit = (e) => {
+        e.preventDefault();
+        const file = document.getElementById('proof-file').files[0];
+        const ref = document.getElementById('proof-ref').value;
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const code = Math.floor(100000 + Math.random() * 900000).toString();
+          const token = Date.now().toString(36) + Math.random().toString(36).substring(2);
+
+          const res = await fetch('/api/activate-with-proof', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: currentUser.uid,
+              bank_ref: ref,
+              proof_base64: reader.result,
+              verification_code: code,
+              verification_token: token,
+            })
+          });
+          const d = await res.json();
+          if (d.success) {
+            document.getElementById('step-proof-container').classList.add('hidden');
+            document.getElementById('step-code-container').classList.remove('hidden');
+            document.getElementById('step-badge-2').className = 'p-2.5 rounded-xl border bg-slate-950 border-slate-800 text-slate-500';
+            document.getElementById('step-badge-3').className = 'p-2.5 rounded-xl border bg-[#00C853]/15 border-[#00C853] text-[#00C853]';
+            if (d.verificationCode) document.getElementById('confirm-code').value = d.verificationCode;
+          } else {
+            alert(d.error || 'Failed to submit proof');
+          }
+        };
+        reader.readAsDataURL(file);
+      };
+
+      // Confirm code
+      document.getElementById('step-code-container').onsubmit = async (e) => {
+        e.preventDefault();
+        const code = document.getElementById('confirm-code').value;
+        const res = await fetch('/api/verify-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: currentUser.uid, code })
+        });
+        const d = await res.json();
+        if (d.success) {
+          currentUser = d.user;
+          window.confetti && window.confetti();
+          alert('Account Activated!');
+          renderUser();
+        } else {
+          alert(d.error || 'Invalid code');
+        }
+      };
+
+      // Task modal submit
+      document.getElementById('btn-close-task-modal').onclick = () => {
+        document.getElementById('modal-task').classList.add('hidden');
+      };
+      document.getElementById('form-task-proof').onsubmit = (e) => {
+        e.preventDefault();
+        const file = document.getElementById('input-task-proof').files[0];
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const res = await fetch('/api/complete-task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: currentUser.uid,
+              taskId: activeTaskForModal.id,
+              proofScreenshotUrl: reader.result,
+            })
+          });
+          const d = await res.json();
+          if (d.success) {
+            window.confetti && window.confetti();
+            alert(d.message);
+            document.getElementById('modal-task').classList.add('hidden');
+            loadTasks();
+            loadDashboardData();
+          } else {
+            alert(d.error || 'Submission failed');
+          }
+        };
+        reader.readAsDataURL(file);
+      };
+
+      // Withdraw
+      document.getElementById('btn-open-withdraw').onclick = () => {
+        document.getElementById('modal-withdraw').classList.remove('hidden');
+      };
+      document.getElementById('btn-close-withdraw').onclick = () => {
+        document.getElementById('modal-withdraw').classList.add('hidden');
+      };
+      document.getElementById('form-withdraw').onsubmit = async (e) => {
+        e.preventDefault();
+        const res = await fetch('/api/withdraw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: currentUser.uid,
+            amount: document.getElementById('w-amount').value,
+            bankName: document.getElementById('w-bank').value,
+            accountNumber: document.getElementById('w-account').value,
+            accountName: document.getElementById('w-name').value,
+          })
+        });
+        const d = await res.json();
+        if (d.success) {
+          alert(d.message);
+          document.getElementById('modal-withdraw').classList.add('hidden');
+          loadDashboardData();
+        } else {
+          alert(d.error || 'Withdrawal failed');
+        }
+      };
+
+      // Logout
+      document.getElementById('btn-logout').onclick = async () => {
+        await signOut(auth);
+        currentUser = null;
+        showState('auth');
+      };
+
+      // Auth tabs switch
+      document.getElementById('tab-register').onclick = () => {
+        authMode = 'signup';
+        document.getElementById('auth-title').innerText = 'Create CDSure Account';
+        document.getElementById('tab-register').className = 'py-2 rounded-lg bg-[#00C853] text-slate-950 font-extrabold';
+        document.getElementById('tab-login').className = 'py-2 rounded-lg text-slate-400 hover:text-white';
+        document.getElementById('field-name').classList.remove('hidden');
+        document.getElementById('field-confirm-password').classList.remove('hidden');
+        document.getElementById('field-referral').classList.remove('hidden');
+        document.getElementById('field-terms').classList.remove('hidden');
+        document.getElementById('btn-forgot-mode').classList.add('hidden');
+        document.getElementById('btn-submit-auth').innerText = 'Create Account';
+      };
+      document.getElementById('tab-login').onclick = () => {
+        authMode = 'login';
+        document.getElementById('auth-title').innerText = 'Sign In to CDSure';
+        document.getElementById('tab-login').className = 'py-2 rounded-lg bg-[#00C853] text-slate-950 font-extrabold';
+        document.getElementById('tab-register').className = 'py-2 rounded-lg text-slate-400 hover:text-white';
+        document.getElementById('field-name').classList.add('hidden');
+        document.getElementById('field-confirm-password').classList.add('hidden');
+        document.getElementById('field-referral').classList.add('hidden');
+        document.getElementById('field-terms').classList.add('hidden');
+        document.getElementById('btn-forgot-mode').classList.remove('hidden');
+        document.getElementById('btn-submit-auth').innerText = 'Sign In';
+      };
+      document.getElementById('btn-forgot-mode').onclick = () => {
+        authMode = 'forgot';
+        document.getElementById('auth-title').innerText = 'Reset Password';
+        document.getElementById('auth-tabs').classList.add('hidden');
+        document.getElementById('field-name').classList.add('hidden');
+        document.getElementById('field-password').classList.add('hidden');
+        document.getElementById('field-confirm-password').classList.add('hidden');
+        document.getElementById('field-referral').classList.add('hidden');
+        document.getElementById('field-terms').classList.add('hidden');
+        document.getElementById('btn-submit-auth').innerText = 'Send Reset Email';
+        document.getElementById('btn-cancel-forgot').classList.remove('hidden');
+      };
+      document.getElementById('btn-cancel-forgot').onclick = () => {
+        document.getElementById('auth-tabs').classList.remove('hidden');
+        document.getElementById('btn-cancel-forgot').classList.add('hidden');
+        document.getElementById('field-password').classList.remove('hidden');
+        document.getElementById('tab-login').click();
+      };
+
+      document.getElementById('auth-form').onsubmit = async (e) => {
+        e.preventDefault();
+        document.getElementById('auth-error').classList.add('hidden');
+        document.getElementById('auth-success').classList.add('hidden');
+        const email = document.getElementById('input-email').value;
+        const pass = document.getElementById('input-password').value;
+        const name = document.getElementById('input-name').value;
+        const ref = document.getElementById('input-referral').value;
+        if (ref) localStorage.setItem('cdsure_referral_code', ref.trim().toUpperCase());
+
+        try {
+          if (authMode === 'forgot') {
+            await sendPasswordResetEmail(auth, email);
+            document.getElementById('auth-success').innerText = 'Password reset instructions sent to your email!';
+            document.getElementById('auth-success').classList.remove('hidden');
+            return;
+          }
+
+          let cred;
+          if (authMode === 'signup') {
+            cred = await createUserWithEmailAndPassword(auth, email, pass);
+          } else {
+            cred = await signInWithEmailAndPassword(auth, email, pass);
+          }
+          const token = await cred.user.getIdToken();
+          await syncUserWithD1(token, cred.user.uid, email, name);
+        } catch (err) {
+          document.getElementById('auth-error').innerText = err.message;
+          document.getElementById('auth-error').classList.remove('hidden');
+        }
+      };
+
+      document.getElementById('btn-copy-ref').onclick = () => {
+        navigator.clipboard.writeText(document.getElementById('dash-ref-link').value);
+        alert('Referral link copied!');
+      };
+      document.getElementById('btn-share-wa').onclick = () => {
+        const link = document.getElementById('dash-ref-link').value;
+        window.open(`https://wa.me/?text=${encodeURIComponent('Earn daily on CDSure Tasks! Join here: ' + link)}`, '_blank');
+      };
+
+      // Listen for Firebase auth
+      onAuthStateChanged(auth, async (u) => {
+        if (u) {
+          const t = await u.getIdToken();
+          await syncUserWithD1(t, u.uid, u.email, u.displayName);
+        } else {
+          showState('auth');
+        }
+      });
+    </script>
+  </body>
+</html>
