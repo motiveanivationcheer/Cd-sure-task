@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Eye, EyeOff, User, Mail, Lock, Check, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, User, Mail, Lock, Check, AlertCircle, ShieldCheck } from 'lucide-react';
 
 export const SignupPage: React.FC = () => {
   const { registerWithEmail, loginWithGoogle, navigate, authError } = useAuth();
@@ -34,10 +34,10 @@ export const SignupPage: React.FC = () => {
     try {
       const res = await registerWithEmail(email.trim(), password, fullName.trim(), role);
       if (!res.success) {
-        setLocalError(res.error || 'Failed to create account. Please try again.');
+        setLocalError(res.error || 'Could not create your account. Please try again.');
       }
-    } catch (err: any) {
-      setLocalError(err.message || 'An error occurred during registration.');
+    } catch (_err) {
+      setLocalError('CDSure Tasks could not connect. Please check your internet and try again.');
     } finally {
       setSubmitting(false);
     }
@@ -47,12 +47,12 @@ export const SignupPage: React.FC = () => {
     setLocalError(null);
     setGoogleSubmitting(true);
     try {
-      const res = await loginWithGoogle();
+      const res = await loginWithGoogle(role);
       if (!res.success) {
-        setLocalError(res.error || 'Google sign-up failed.');
+        setLocalError(res.error || 'Could not complete Google sign-up. Please try again.');
       }
-    } catch (err: any) {
-      setLocalError(err.message || 'Google sign-up encountered an error.');
+    } catch (_err) {
+      setLocalError('CDSure Tasks could not connect. Please check your internet.');
     } finally {
       setGoogleSubmitting(false);
     }
@@ -63,10 +63,10 @@ export const SignupPage: React.FC = () => {
       {/* Brand Header */}
       <div className="flex flex-col items-center mb-6">
         <div className="flex items-center gap-2.5 mb-1.5">
-          <div className="w-9 h-9 rounded-xl bg-[#7C3AED] flex items-center justify-center shadow-md shadow-purple-600/25">
-            <Check className="w-5 h-5 text-white stroke-[3]" />
+          <div className="w-10 h-10 rounded-2xl bg-[#7C3AED] flex items-center justify-center shadow-md shadow-purple-600/25">
+            <Check className="w-6 h-6 text-white stroke-[3]" />
           </div>
-          <span className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+          <span className="text-2xl font-black text-[#0f172a] tracking-tight">
             CDSure <span className="text-[#7C3AED]">Tasks</span>
           </span>
         </div>
@@ -78,11 +78,11 @@ export const SignupPage: React.FC = () => {
       {/* Main White Card */}
       <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/60 border border-slate-100">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-extrabold text-[#0f172a] tracking-tight">
+          <h1 className="text-2xl font-black text-[#0f172a] tracking-tight">
             Create an Account
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Join CDSure Tasks to earn daily or hire micro-taskers
+            Create your CDSure Tasks account
           </p>
         </div>
 
@@ -208,11 +208,20 @@ export const SignupPage: React.FC = () => {
             className="w-full mt-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-600/25 active:scale-[0.99] transition-all disabled:opacity-60"
           >
             {submitting ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Creating your account...</span>
+              </div>
             ) : (
               <span>Sign Up</span>
             )}
           </button>
+
+          {/* Under button security trust badge */}
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 mt-2 font-medium">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Secured by CDSure Tasks</span>
+          </div>
         </form>
 
         {/* Divider OR */}
@@ -233,7 +242,10 @@ export const SignupPage: React.FC = () => {
           className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2.5 text-xs shadow-sm hover:shadow transition-all disabled:opacity-60"
         >
           {googleSubmitting ? (
-            <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
+              <span>Creating your account with Google...</span>
+            </div>
           ) : (
             <>
               <svg className="w-4 h-4" viewBox="0 0 24 24">

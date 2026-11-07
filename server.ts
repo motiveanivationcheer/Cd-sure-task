@@ -195,7 +195,45 @@ try { db.prepare('ALTER TABLE payments ADD COLUMN admin_confirmed_at TEXT').run(
 try { db.prepare("ALTER TABLE payments ADD COLUMN r2_bucket TEXT DEFAULT 'cdsure-proofs'").run(); } catch (_) {}
 try { db.prepare('ALTER TABLE activation_payments ADD COLUMN proof_image TEXT').run(); } catch (_) {}
 try { db.prepare('ALTER TABLE activation_payments ADD COLUMN admin_note TEXT').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE activation_payments ADD COLUMN sender_name TEXT').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE activation_payments ADD COLUMN reference TEXT').run(); } catch (_) {}
 
+// Platform Earnings & 30% Fee Migrations
+db.exec(`
+  CREATE TABLE IF NOT EXISTS platform_earnings (
+    id TEXT PRIMARY KEY,
+    transaction_id TEXT,
+    user_id TEXT,
+    role TEXT,
+    fee_amount REAL,
+    gross_amount REAL,
+    source TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+try { db.prepare("ALTER TABLE transactions ADD COLUMN role TEXT DEFAULT 'earner'").run(); } catch (_) {}
+try { db.prepare('ALTER TABLE transactions ADD COLUMN gross_amount REAL').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE transactions ADD COLUMN fee_percent REAL DEFAULT 30').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE transactions ADD COLUMN fee_amount REAL DEFAULT 0').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE transactions ADD COLUMN net_amount REAL').run(); } catch (_) {}
+try { db.prepare("ALTER TABLE transactions ADD COLUMN status TEXT DEFAULT 'success'").run(); } catch (_) {}
+try { db.prepare('ALTER TABLE transactions ADD COLUMN reference TEXT').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE withdrawals ADD COLUMN fee_amount REAL DEFAULT 0').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE withdrawals ADD COLUMN net_amount REAL').run(); } catch (_) {}
+try { db.prepare("ALTER TABLE withdrawals ADD COLUMN role TEXT DEFAULT 'earner'").run(); } catch (_) {}
+try { db.prepare('ALTER TABLE tasks ADD COLUMN fee_amount REAL').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE tasks ADD COLUMN net_reward REAL').run(); } catch (_) {}
+
+// 30% Platform Charge Helper
+const PLATFORM_FEE_RATE = 0.30;
+
+function calculate30PercentFee(amount: number) {
+  const gross = Math.max(0, Math.round(Number(amount) * 100) / 100);
+  const fee = Math.round(gross * PLATFORM_FEE_RATE * 100) / 100;
+  const net = Math.round((gross - fee) * 100) / 100;
+  return { gross, fee, net, percent: 30 };
+}
 
 function generateId() {
   return Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
@@ -490,12 +528,79 @@ app.post('/api/users/sync', (req: Request, res: Response) => {
   }
 });
 
-// Manual SmartCash Activation APIs (₦1,500 Earner Activation Fee)
-// POST /api/activation/submit
+// Presigned URL generation for Cloudflare R2 / Server direct upload
+// Step 1 of fast proof upload flow
+app.post('/api/upload/presigned-url', (req: Request, res: Response) => {
+  try {
+    const userId = req.body.userId || req.body.user_id || 'user';
+    const folder = req.body.folder || 'activation';
+    const contentType = req.body.contentType || 'image/jpeg';
+    const ext = req.body.filename?.split('.').pop() || 'jpg';
+
+    const timestamp = Date.now();
+    const cleanKey = `${folder}/${userId}-${timestamp}.${ext}`;
+    
+    // Direct upload URL and public URL
+    const uploadUrl = `/api/upload/direct?key=${encodeURIComponent(cleanKey)}`;
+    const publicUrl = `/uploads/${cleanKey}`;
+
+    return res.json({
+      success: true,
+      uploadUrl,
+      publicUrl,
+      key: cleanKey,
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to generate upload URL' });
+  }
+});
+
+// Step 2: Direct raw body upload without storing API keys on frontend
+app.put('/api/upload/direct', express.raw({ type: '*/*', limit: '15mb' }), (req: Request, res: Response) => {
+  try {
+    const rawKey = (req.query.key as string) || '';
+    if (!rawKey) {
+      return res.status(400).json({ error: 'Missing object key parameter' });
+    }
+
+    const sanitizedKey = rawKey.replace(/\.\./g, '');
+    const targetPath = path.resolve(uploadDir, sanitizedKey);
+    const targetDir = path.dirname(targetPath);
+
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    if (Buffer.isBuffer(req.body)) {
+      fs.writeFileSync(targetPath, req.body);
+    } else {
+      return res.status(400).json({ error: 'Empty file payload' });
+    }
+
+    const publicUrl = `/uploads/${sanitizedKey}`;
+    return res.json({
+      success: true,
+      key: sanitizedKey,
+      publicUrl,
+      message: 'Uploaded successfully',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Upload failed' });
+  }
+});
+
+// Step 3: Manual SmartCash Activation APIs (₦1,500 Earner Activation Fee)
+// POST /api/activation/submit - accepts either JSON or multipart/form-data
 app.post('/api/activation/submit', upload.single('proof'), (req: Request, res: Response) => {
   try {
     const userId = req.body.user_id || req.body.userId;
     const email = req.body.email;
+    const senderName = req.body.sender_name || '';
+    const reference = req.body.reference || req.body.txRef || '';
     let proofImageUrl = req.body.proof_image || req.body.proof || '';
 
     if (req.file) {
@@ -518,14 +623,14 @@ app.post('/api/activation/submit', upload.single('proof'), (req: Request, res: R
     if (existing) {
       db.prepare(`
         UPDATE activation_payments
-        SET proof_image = ?, status = 'pending', admin_note = NULL, created_at = ?
+        SET proof_image = ?, sender_name = ?, reference = ?, status = 'pending', admin_note = NULL, created_at = ?
         WHERE id = ?
-      `).run(proofImageUrl, nowIso, existing.id);
+      `).run(proofImageUrl, senderName, reference, nowIso, existing.id);
     } else {
       db.prepare(`
-        INSERT INTO activation_payments (id, user_id, email, amount, proof_image, status, admin_note, created_at)
-        VALUES (?, ?, ?, 1500, ?, 'pending', NULL, ?)
-      `).run(paymentId, userId, email, proofImageUrl, nowIso);
+        INSERT INTO activation_payments (id, user_id, email, amount, proof_image, sender_name, reference, status, admin_note, created_at)
+        VALUES (?, ?, ?, 1500, ?, ?, ?, 'pending', NULL, ?)
+      `).run(paymentId, userId, email, proofImageUrl, senderName, reference, nowIso);
     }
 
     return res.json({
@@ -677,6 +782,16 @@ app.get('/api/tasks', (_req: Request, res: Response) => {
   }
 });
 
+// 2. GET & POST /api/tasks
+app.get('/api/tasks', (_req: Request, res: Response) => {
+  try {
+    const tasks = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all();
+    return res.json({ success: true, tasks: tasks || [] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/tasks', (req: Request, res: Response) => {
   try {
     const { employer_id, title, description = '', category = 'Social Media', price = 1000, deadline = '3 days' } = req.body;
@@ -684,13 +799,14 @@ app.post('/api/tasks', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing title or employer ID' });
     }
     const taskId = 't-' + generateId().slice(0, 8);
-    const numPrice = parseInt(price, 10) || 1000;
+    const numPrice = parseFloat(price) || 1000;
+    const { gross, fee, net } = calculate30PercentFee(numPrice);
     const nowIso = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO tasks (id, employer_id, title, description, category, price, deadline, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)
-    `).run(taskId, employer_id, title, description, category, numPrice, deadline, nowIso);
+      INSERT INTO tasks (id, employer_id, title, description, category, price, fee_amount, net_reward, deadline, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+    `).run(taskId, employer_id, title, description, category, gross, fee, net, deadline, nowIso);
 
     const task = {
       id: taskId,
@@ -698,7 +814,9 @@ app.post('/api/tasks', (req: Request, res: Response) => {
       title,
       description,
       category,
-      price: numPrice,
+      price: gross,
+      fee_amount: fee,
+      net_reward: net,
       deadline,
       status: 'open',
       created_at: nowIso,
@@ -706,6 +824,60 @@ app.post('/api/tasks', (req: Request, res: Response) => {
     return res.json({ success: true, task });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// Task Cancellation & Refund Flow:
+// Net amount (70%) refunded to Employer; CDSure retains 30% platform fee.
+app.post('/api/tasks/cancel', (req: Request, res: Response) => {
+  try {
+    const { taskId, employerId } = req.body;
+    if (!taskId || !employerId) {
+      return res.status(400).json({ error: 'Missing taskId or employerId' });
+    }
+
+    const task: any = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const taskBudget = task.price || 1000;
+    const { gross, fee, net } = calculate30PercentFee(taskBudget);
+    const txId = 'tx_' + generateId();
+    const nowIso = new Date().toISOString();
+
+    const executeRefund = db.transaction(() => {
+      // 1. Mark task cancelled
+      db.prepare("UPDATE tasks SET status = 'cancelled' WHERE id = ?").run(taskId);
+
+      // 2. Refund NET amount to employer wallet
+      let empWallet: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(employerId);
+      if (!empWallet) {
+        db.prepare('INSERT INTO wallet (id, user_id, balance, escrow_locked) VALUES (?, ?, ?, 0)').run(generateId(), employerId, net);
+      } else {
+        db.prepare('UPDATE wallet SET balance = balance + ?, updated_at = ? WHERE user_id = ?').run(net, nowIso, employerId);
+      }
+      db.prepare('UPDATE users SET balance = balance + ? WHERE id = ? OR uid = ?').run(net, employerId, employerId);
+
+      // 3. Record transaction
+      db.prepare(`
+        INSERT INTO transactions (id, user_id, role, type, amount, gross_amount, fee_percent, fee_amount, net_amount, status, reference, description, created_at)
+        VALUES (?, ?, 'employer', 'refund', ?, ?, 30, ?, ?, 'success', ?, ?, ?)
+      `).run(txId, employerId, net, gross, fee, net, `REF-${taskId}`, `Refund for cancelled task "${task.title}" (Net 70% refunded, CDSure retains 30% fee)`, nowIso);
+
+      return db.prepare('SELECT balance FROM wallet WHERE user_id = ?').get(employerId);
+    });
+
+    const updatedWallet: any = executeRefund();
+
+    return res.json({
+      success: true,
+      message: `Task cancelled. Net amount of ₦${net.toLocaleString()} refunded to your wallet. CDSure retained 30% platform fee (₦${fee.toLocaleString()}).`,
+      grossAmount: gross,
+      feeRetained: fee,
+      netRefunded: net,
+      balance: updatedWallet?.balance || 0,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Refund failed' });
   }
 });
 
@@ -796,7 +968,104 @@ app.post('/api/submissions', upload.single('file'), (req: Request, res: Response
   }
 });
 
-// 5. GET /api/wallet/:userId
+// Submission Approval with Single 30% Charge on Employer Side (Worker gets 70% net)
+app.post('/api/submissions/approve', (req: Request, res: Response) => {
+  try {
+    const { submissionId, employerId } = req.body;
+    if (!submissionId) {
+      return res.status(400).json({ error: 'Missing submissionId' });
+    }
+
+    const sub: any = db.prepare('SELECT * FROM submissions WHERE id = ?').get(submissionId);
+    if (!sub) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    if (sub.status === 'approved') {
+      return res.json({ success: true, message: 'Submission already approved' });
+    }
+
+    const task: any = db.prepare('SELECT * FROM tasks WHERE id = ?').get(sub.task_id);
+    const taskPrice = task ? (task.price || 1000) : 1000;
+    const { gross, fee, net } = calculate30PercentFee(taskPrice);
+
+    const workerId = sub.earner_id;
+    const nowIso = new Date().toISOString();
+    const txIdEmp = 'tx_' + generateId();
+    const txIdWorker = 'tx_' + generateId();
+    const earnId = 'earn_' + generateId();
+    const ref = `TASK-${sub.task_id}-${sub.id}`;
+
+    // Atomic transaction
+    const executeApproval = db.transaction(() => {
+      // 1. Mark submission approved
+      db.prepare("UPDATE submissions SET status = 'approved' WHERE id = ?").run(sub.id);
+      db.prepare("UPDATE applications SET status = 'approved' WHERE task_id = ? AND earner_id = ?").run(sub.task_id, workerId);
+
+      // 2. Credit worker net amount (70% net, already discounted 30% on employer side)
+      let workerWallet: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(workerId);
+      if (!workerWallet) {
+        db.prepare('INSERT INTO wallet (id, user_id, balance, escrow_locked) VALUES (?, ?, ?, 0)').run(generateId(), workerId, net);
+      } else {
+        db.prepare('UPDATE wallet SET balance = balance + ?, updated_at = ? WHERE user_id = ?').run(net, nowIso, workerId);
+      }
+      db.prepare('UPDATE users SET balance = balance + ?, total_earned = total_earned + ? WHERE id = ? OR uid = ?').run(net, net, workerId, workerId);
+
+      // 3. Deduct from employer wallet if available
+      if (employerId) {
+        let empWallet: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(employerId);
+        if (empWallet && empWallet.balance >= gross) {
+          db.prepare('UPDATE wallet SET balance = balance - ?, updated_at = ? WHERE user_id = ?').run(gross, nowIso, employerId);
+          db.prepare('UPDATE users SET balance = balance - ? WHERE id = ? OR uid = ?').run(gross, employerId, employerId);
+        }
+      }
+
+      // 4. Record employer task payment transaction
+      db.prepare(`
+        INSERT INTO transactions (id, user_id, role, type, amount, gross_amount, fee_percent, fee_amount, net_amount, status, reference, description, created_at)
+        VALUES (?, ?, 'employer', 'task_payment', ?, ?, 30, ?, ?, 'success', ?, ?, ?)
+      `).run(txIdEmp, employerId || 'employer', gross, gross, fee, net, ref + '-EMP', `Task payout for "${task?.title || 'Task'}" (₦${gross.toLocaleString()} gross, 30% CDSure fee ₦${fee.toLocaleString()})`, nowIso);
+
+      // 5. Record worker earning transaction (fee charged on employer side; worker gets net)
+      db.prepare(`
+        INSERT INTO transactions (id, user_id, role, type, amount, gross_amount, fee_percent, fee_amount, net_amount, status, reference, description, created_at)
+        VALUES (?, ?, 'earner', 'task_earning', ?, ?, 0, 0, ?, 'success', ?, ?, ?)
+      `).run(txIdWorker, workerId, net, gross, net, ref + '-WRK', `Earnings for task "${task?.title || 'Task'}" (Net credited after employer 30% platform fee)`, nowIso);
+
+      // 6. Record 30% platform earnings from the task payment
+      db.prepare(`
+        INSERT INTO platform_earnings (id, transaction_id, user_id, role, fee_amount, gross_amount, source, created_at)
+        VALUES (?, ?, ?, 'employer', ?, ?, 'task_payment', ?)
+      `).run(earnId, txIdEmp, employerId || 'employer', fee, gross, nowIso);
+    });
+
+    executeApproval();
+
+    return res.json({
+      success: true,
+      message: `Submission approved! ₦${fee.toLocaleString()} (30% CDSure fee) retained. Worker credited ₦${net.toLocaleString()} net.`,
+      grossAmount: gross,
+      feeAmount: fee,
+      netCredited: net,
+      workerId,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Approval failed' });
+  }
+});
+
+app.post('/api/submissions/reject', (req: Request, res: Response) => {
+  try {
+    const { submissionId } = req.body;
+    if (!submissionId) return res.status(400).json({ error: 'Missing submissionId' });
+    db.prepare("UPDATE submissions SET status = 'rejected' WHERE id = ?").run(submissionId);
+    return res.json({ success: true, message: 'Submission rejected' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. GET /api/wallet/:userId (Enhanced with 30% fees tracking)
 app.get('/api/wallet/:userId', (req: Request, res: Response) => {
   try {
     const userId = req.params.userId;
@@ -805,9 +1074,10 @@ app.get('/api/wallet/:userId', (req: Request, res: Response) => {
     }
 
     let wallet: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(userId);
+    let user: any = db.prepare('SELECT * FROM users WHERE id = ? OR uid = ?').get(userId, userId);
+    const userBalance = wallet ? wallet.balance : (user?.balance || 0);
+
     if (!wallet) {
-      const user: any = db.prepare('SELECT balance FROM users WHERE id = ? OR uid = ?').get(userId, userId);
-      const userBalance = user?.balance || 0;
       const walletId = generateId();
       db.prepare('INSERT INTO wallet (id, user_id, balance, escrow_locked) VALUES (?, ?, ?, 0)').run(walletId, userId, userBalance);
       wallet = {
@@ -818,12 +1088,250 @@ app.get('/api/wallet/:userId', (req: Request, res: Response) => {
       };
     }
 
-    const transactions = db.prepare('SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10').all(userId);
+    // Calculate total fees paid (30%) by this user
+    const feesRow: any = db.prepare('SELECT COALESCE(SUM(fee_amount), 0) as total_fees FROM platform_earnings WHERE user_id = ?').get(userId);
+    const depositsRow: any = db.prepare("SELECT COALESCE(SUM(net_amount), 0) as total_dep FROM transactions WHERE user_id = ? AND type = 'deposit' AND status = 'success'").get(userId);
+
+    const totalFeesPaid = feesRow?.total_fees || 0;
+    const totalDeposited = depositsRow?.total_dep || 0;
+    const totalEarned = user?.total_earned || 0;
+
+    const rawTransactions = db.prepare('SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(userId);
+
+    const transactions = rawTransactions.map((t: any) => ({
+      id: t.id,
+      userId: t.user_id,
+      role: t.role || 'earner',
+      type: t.type,
+      grossAmount: t.gross_amount ?? t.amount ?? 0,
+      feePercent: t.fee_percent ?? 30,
+      feeAmount: t.fee_amount ?? 0,
+      netAmount: t.net_amount ?? (t.amount ?? 0),
+      status: t.status || 'success',
+      reference: t.reference,
+      description: t.description,
+      createdAt: t.created_at,
+    }));
 
     return res.json({
       success: true,
-      wallet,
+      wallet: {
+        ...wallet,
+        balance: userBalance,
+        total_fees_paid: totalFeesPaid,
+        total_deposited: totalDeposited,
+        total_earned: totalEarned,
+      },
       transactions: transactions || [],
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. POST /api/wallet/deposit (Applies 30% CDSure Platform Charge to BOTH Modes)
+app.post('/api/wallet/deposit', (req: Request, res: Response) => {
+  try {
+    const { userId, role = 'earner', amount, reference } = req.body;
+    const numAmount = parseFloat(amount);
+    if (!userId || isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: 'Valid user ID and positive deposit amount are required' });
+    }
+
+    const { gross, fee, net } = calculate30PercentFee(numAmount);
+    const txRef = reference || `DEP-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+
+    // Prevent double charge
+    const existingTx: any = db.prepare('SELECT * FROM transactions WHERE reference = ?').get(txRef);
+    if (existingTx) {
+      const currentWallet: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(userId);
+      return res.json({
+        success: true,
+        message: 'Transaction already processed',
+        grossAmount: existingTx.gross_amount,
+        feeAmount: existingTx.fee_amount,
+        netAmount: existingTx.net_amount,
+        balance: currentWallet?.balance || 0,
+        transaction: existingTx,
+      });
+    }
+
+    const txId = 'tx_' + generateId();
+    const earnId = 'earn_' + generateId();
+    const nowIso = new Date().toISOString();
+    const userRole = role === 'employer' ? 'employer' : 'earner';
+    const description = `${userRole === 'employer' ? 'Employer' : 'Worker'} Wallet Deposit (₦${gross.toLocaleString()} gross, 30% CDSure fee ₦${fee.toLocaleString()})`;
+
+    // Atomic execution
+    const executeDeposit = db.transaction(() => {
+      let w: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(userId);
+      if (!w) {
+        db.prepare('INSERT INTO wallet (id, user_id, balance, escrow_locked) VALUES (?, ?, ?, 0)').run(generateId(), userId, net);
+      } else {
+        db.prepare('UPDATE wallet SET balance = balance + ?, updated_at = ? WHERE user_id = ?').run(net, nowIso, userId);
+      }
+
+      db.prepare('UPDATE users SET balance = balance + ? WHERE id = ? OR uid = ?').run(net, userId, userId);
+
+      db.prepare(`
+        INSERT INTO transactions (id, user_id, role, type, amount, gross_amount, fee_percent, fee_amount, net_amount, status, reference, description, created_at)
+        VALUES (?, ?, ?, 'deposit', ?, ?, 30, ?, ?, 'success', ?, ?, ?)
+      `).run(txId, userId, userRole, net, gross, fee, net, txRef, description, nowIso);
+
+      db.prepare(`
+        INSERT INTO platform_earnings (id, transaction_id, user_id, role, fee_amount, gross_amount, source, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'deposit', ?)
+      `).run(earnId, txId, userId, userRole, fee, gross, nowIso);
+
+      return db.prepare('SELECT balance FROM wallet WHERE user_id = ?').get(userId);
+    });
+
+    const updatedWallet: any = executeDeposit();
+
+    return res.json({
+      success: true,
+      message: `Deposit processed! ₦${fee.toLocaleString()} (30% CDSure fee) deducted. ₦${net.toLocaleString()} added to your wallet.`,
+      grossAmount: gross,
+      feeAmount: fee,
+      netAmount: net,
+      balance: updatedWallet?.balance || 0,
+      transactionId: txId,
+      reference: txRef,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Deposit failed' });
+  }
+});
+
+// 7. POST /api/wallet/withdraw (Applies 30% CDSure Platform Charge to BOTH Modes)
+const handleProcessWithdrawal = (req: Request, res: Response) => {
+  try {
+    const userId = req.body.userId || req.body.uid;
+    const role = req.body.role === 'employer' ? 'employer' : 'earner';
+    const amount = parseFloat(req.body.amount);
+    const bankName = req.body.bankName || req.body.bank_name || 'Commercial Bank';
+    const accountNumber = req.body.accountNumber || req.body.account_number || '';
+    const accountName = req.body.accountName || req.body.account_name || '';
+    const reference = req.body.reference;
+
+    if (!userId || isNaN(amount) || amount < 500) {
+      return res.status(400).json({ error: 'Minimum withdrawal is ₦500' });
+    }
+
+    const { gross, fee, net } = calculate30PercentFee(amount);
+    const txRef = reference || `WDR-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+
+    // Prevent double charge
+    const existingTx: any = db.prepare('SELECT * FROM transactions WHERE reference = ?').get(txRef);
+    if (existingTx) {
+      const currentWallet: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(userId);
+      return res.json({
+        success: true,
+        message: 'Withdrawal already submitted',
+        grossAmount: existingTx.gross_amount,
+        feeAmount: existingTx.fee_amount,
+        netAmount: existingTx.net_amount,
+        balance: currentWallet?.balance || 0,
+      });
+    }
+
+    // Check balance
+    let wallet: any = db.prepare('SELECT * FROM wallet WHERE user_id = ?').get(userId);
+    let user: any = db.prepare('SELECT * FROM users WHERE id = ? OR uid = ?').get(userId, userId);
+    const currentBalance = wallet ? wallet.balance : (user?.balance || 0);
+
+    if (currentBalance < gross) {
+      return res.status(400).json({
+        error: `Insufficient balance. Available balance is ₦${currentBalance.toLocaleString()}, but ₦${gross.toLocaleString()} is required.`
+      });
+    }
+
+    const txId = 'tx_' + generateId();
+    const earnId = 'earn_' + generateId();
+    const withdrawalId = 'wdr_' + generateId();
+    const nowIso = new Date().toISOString();
+    const description = `Withdrawal to ${bankName} (${accountNumber}) - Gross ₦${gross.toLocaleString()}, 30% CDSure fee ₦${fee.toLocaleString()}, Net payout ₦${net.toLocaleString()}`;
+
+    // Atomic execution
+    const executeWithdrawal = db.transaction(() => {
+      if (wallet) {
+        db.prepare('UPDATE wallet SET balance = balance - ?, updated_at = ? WHERE user_id = ?').run(gross, nowIso, userId);
+      } else {
+        db.prepare('INSERT INTO wallet (id, user_id, balance, escrow_locked) VALUES (?, ?, ?, 0)').run(generateId(), userId, currentBalance - gross);
+      }
+
+      db.prepare('UPDATE users SET balance = balance - ? WHERE id = ? OR uid = ?').run(gross, userId, userId);
+
+      db.prepare(`
+        INSERT INTO withdrawals (id, uid, amount, status, bank_name, account_number, account_name, date, fee_amount, net_amount, role)
+        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+      `).run(withdrawalId, userId, net, bankName, accountNumber, accountName, nowIso, fee, net, role);
+
+      db.prepare(`
+        INSERT INTO transactions (id, user_id, role, type, amount, gross_amount, fee_percent, fee_amount, net_amount, status, reference, description, created_at)
+        VALUES (?, ?, ?, 'withdrawal', ?, ?, 30, ?, ?, 'pending', ?, ?, ?)
+      `).run(txId, userId, role, net, gross, fee, net, txRef, description, nowIso);
+
+      db.prepare(`
+        INSERT INTO platform_earnings (id, transaction_id, user_id, role, fee_amount, gross_amount, source, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'withdrawal', ?)
+      `).run(earnId, txId, userId, role, fee, gross, nowIso);
+
+      return db.prepare('SELECT balance FROM wallet WHERE user_id = ?').get(userId);
+    });
+
+    const updatedWallet: any = executeWithdrawal();
+
+    return res.json({
+      success: true,
+      message: `Withdrawal request of ₦${gross.toLocaleString()} submitted! ₦${fee.toLocaleString()} (30% CDSure fee) deducted. ₦${net.toLocaleString()} will be sent to your bank.`,
+      grossAmount: gross,
+      feeAmount: fee,
+      netAmount: net,
+      balance: updatedWallet?.balance || 0,
+      withdrawal: {
+        id: withdrawalId,
+        grossAmount: gross,
+        feeAmount: fee,
+        netAmount: net,
+        bankName,
+        accountNumber,
+        accountName,
+        status: 'pending',
+        date: nowIso,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Withdrawal failed' });
+  }
+};
+
+app.post('/api/wallet/withdraw', handleProcessWithdrawal);
+app.post('/api/withdraw', handleProcessWithdrawal);
+
+// 8. GET /api/admin/platform-earnings (Total 30% Earnings Breakdown for Admin)
+app.get('/api/admin/platform-earnings', (_req: Request, res: Response) => {
+  try {
+    const totalRow: any = db.prepare('SELECT COALESCE(SUM(fee_amount), 0) as total FROM platform_earnings').get();
+    const empRow: any = db.prepare("SELECT COALESCE(SUM(fee_amount), 0) as total FROM platform_earnings WHERE role = 'employer'").get();
+    const earnRow: any = db.prepare("SELECT COALESCE(SUM(fee_amount), 0) as total FROM platform_earnings WHERE role = 'earner'").get();
+
+    const recentEarnings = db.prepare(`
+      SELECT p.id, p.transaction_id as transactionId, p.user_id as userId, p.role, p.fee_amount as feeAmount,
+             p.gross_amount as grossAmount, p.source, p.created_at as createdAt,
+             u.name as userName, u.email as userEmail
+      FROM platform_earnings p
+      LEFT JOIN users u ON p.user_id = u.id OR p.user_id = u.uid
+      ORDER BY p.created_at DESC
+      LIMIT 100
+    `).all();
+
+    return res.json({
+      success: true,
+      totalCombined: totalRow?.total || 0,
+      totalEmployer: empRow?.total || 0,
+      totalEarner: earnRow?.total || 0,
+      recentEarnings: recentEarnings || [],
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

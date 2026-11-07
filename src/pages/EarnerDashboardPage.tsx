@@ -147,9 +147,12 @@ export const EarnerDashboardPage: React.FC = () => {
 
   // Navigation tabs within Earner mode
   const [activeTab, setActiveTab] = useState<'browse' | 'my-tasks' | 'wallet'>('browse');
+  const [loadingTasks, setLoadingTasks] = useState<boolean>(false);
+  const [loadingWallet, setLoadingWallet] = useState<boolean>(false);
 
   // Filter states
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
   const [minPrice, setMinPrice] = useState<number>(0);
   const [sortBy, setSortBy] = useState<'newest' | 'price' | 'deadline'>('newest');
 
@@ -245,8 +248,9 @@ export const EarnerDashboardPage: React.FC = () => {
     return 0;
   });
 
-  // Handle Accept Task (Syncs to Cloudflare D1)
+  // Handle Accept Task
   const handleAcceptTask = async (task: TaskItem) => {
+
     if (!isActivated) {
       alert('Account Activation Required: Please pay the ₦1,500 activation fee to unlock tasks.');
       setSelectedTask(null);
@@ -274,7 +278,7 @@ export const EarnerDashboardPage: React.FC = () => {
     setSelectedTask(null);
     setActiveTab('my-tasks');
 
-    // Sync application to Cloudflare D1
+    // Save application to CDSure Tasks
     try {
       await fetch('/api/tasks/apply', {
         method: 'POST',
@@ -284,14 +288,14 @@ export const EarnerDashboardPage: React.FC = () => {
           earner_id: userProfile?.uid || 'earner-demo',
         }),
       });
-    } catch (err) {
-      console.warn('D1 application sync notice:', err);
+    } catch (_err) {
+      // Saved in state
     }
 
     alert(`Task accepted! You can now complete the steps and submit proof.`);
   };
 
-  // Handle Proof Submit (Syncs to Cloudflare D1 & R2)
+  // Handle Proof Submit
   const handleProofSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submitProofTask) return;
@@ -328,7 +332,7 @@ export const EarnerDashboardPage: React.FC = () => {
       ...notifications,
     ]);
 
-    // Sync submission to Cloudflare D1 and R2
+    // Save submission to CDSure Tasks
     try {
       await fetch('/api/submissions', {
         method: 'POST',
@@ -340,9 +344,10 @@ export const EarnerDashboardPage: React.FC = () => {
           proof_text: proofNoteInput.trim(),
         }),
       });
-    } catch (err) {
-      console.warn('D1 submission sync notice:', err);
+    } catch (_err) {
+      // Saved in state
     }
+
 
     setSubmitProofTask(null);
     setProofUrlInput('');
@@ -580,27 +585,44 @@ export const EarnerDashboardPage: React.FC = () => {
 
             {/* Tasks list */}
             <div className="space-y-3">
-              {!isActivated && (
-                <div className="bg-gradient-to-r from-purple-900 to-[#0f172a] text-white rounded-2xl p-4 shadow-md border border-purple-800 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300 block">
-                      Account Activation Required
-                    </span>
-                    <p className="font-extrabold text-xs text-white mt-0.5">
-                      Pay ₦1,500 one-time fee to unlock and accept tasks
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/activate')}
-                    className="px-3 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold rounded-xl text-xs shrink-0 shadow-sm transition"
-                  >
-                    Pay ₦1,500 to Unlock
-                  </button>
+              {loadingTasks ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm animate-pulse space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="h-4 bg-slate-200 rounded w-24" />
+                        <div className="h-5 bg-slate-200 rounded w-16" />
+                      </div>
+                      <div className="h-5 bg-slate-200 rounded w-3/4" />
+                      <div className="h-3 bg-slate-200 rounded w-1/3" />
+                    </div>
+                  ))}
+                  <p className="text-center text-xs text-slate-500 font-semibold my-2">Loading your tasks...</p>
                 </div>
-              )}
+              ) : (
+                <>
+                  {!isActivated && (
+                    <div className="bg-gradient-to-r from-purple-900 to-[#0f172a] text-white rounded-2xl p-4 shadow-md border border-purple-800 flex items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300 block">
+                          Account Activation Required
+                        </span>
+                        <p className="font-extrabold text-xs text-white mt-0.5">
+                          Pay ₦1,500 one-time fee to unlock and accept tasks
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/activate')}
+                        className="px-3 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold rounded-xl text-xs shrink-0 shadow-sm transition"
+                      >
+                        Pay ₦1,500 to Unlock
+                      </button>
+                    </div>
+                  )}
 
-              {filteredTasks.map((task) => (
+                  {filteredTasks.map((task) => (
+
                 <div
                   key={task.id}
                   className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm hover:border-[#7C3AED]/40 transition-all cursor-pointer"
@@ -664,7 +686,10 @@ export const EarnerDashboardPage: React.FC = () => {
                   </div>
                 </div>
               ))}
-            </div>
+            </>
+          )}
+        </div>
+
 
           </div>
         )}
@@ -750,26 +775,36 @@ export const EarnerDashboardPage: React.FC = () => {
         {activeTab === 'wallet' && (
           <div className="mx-4 mt-4 space-y-4">
             {/* Balance Card */}
-            <div className="bg-[#0f172a] rounded-2xl p-5 text-white shadow-lg">
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                Available Wallet Balance
-              </p>
-              <p className="text-3xl font-black text-white mt-1">
-                ₦{totalEarned.toLocaleString()}.00
-              </p>
-              <p className="text-xs text-emerald-400 font-medium mt-1">
-                Instant withdrawal available
-              </p>
+            {loadingWallet ? (
+              <div className="bg-[#0f172a] rounded-2xl p-6 text-white animate-pulse space-y-3">
+                <div className="h-3 bg-slate-800 rounded w-32" />
+                <div className="h-8 bg-slate-800 rounded w-44" />
+                <div className="h-3 bg-slate-800 rounded w-28" />
+                <p className="text-center text-xs text-slate-400 font-semibold pt-2">Loading your balance...</p>
+              </div>
+            ) : (
+              <div className="bg-[#0f172a] rounded-2xl p-5 text-white shadow-lg">
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                  Available Wallet Balance
+                </p>
+                <p className="text-3xl font-black text-white mt-1">
+                  ₦{totalEarned.toLocaleString()}.00
+                </p>
+                <p className="text-xs text-emerald-400 font-medium mt-1">
+                  Instant withdrawal available
+                </p>
 
-              <button
-                type="button"
-                onClick={() => setWithdrawModalOpen(true)}
-                className="w-full mt-4 py-3 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold rounded-xl text-sm shadow-md flex items-center justify-center gap-2"
-              >
-                <ArrowUpRight className="w-4 h-4" />
-                <span>Withdraw to Nigerian Bank</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setWithdrawModalOpen(true)}
+                  className="w-full mt-4 py-3 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold rounded-xl text-sm shadow-md flex items-center justify-center gap-2"
+                >
+                  <ArrowUpRight className="w-4 h-4" />
+                  <span>Withdraw to Nigerian Bank</span>
+                </button>
+              </div>
+            )}
+
 
             {/* Earnings History */}
             <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">

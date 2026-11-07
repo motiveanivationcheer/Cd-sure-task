@@ -20,7 +20,7 @@ function AppContent() {
         </div>
         <div className="w-6 h-6 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin mb-3" />
         <p className="text-sm font-extrabold text-[#0f172a]">CDSure Tasks</p>
-        <p className="text-xs text-slate-400 mt-0.5">Connecting to Cloudflare D1...</p>
+        <p className="text-xs text-slate-400 mt-0.5">Connecting to CDSure Tasks...</p>
       </div>
     );
   }

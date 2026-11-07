@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { compressImage, type CompressionResult } from '../utils/imageCompressor';
 import confetti from 'canvas-confetti';
 import {
   Lock,
@@ -17,12 +18,15 @@ import {
   AlertCircle,
   HelpCircle,
   ShieldCheck,
+  Zap,
 } from 'lucide-react';
 
 export const ActivatePage: React.FC = () => {
   const {
     firebaseUser,
     userProfile,
+    requestPresignedUploadUrl,
+    uploadToPresignedUrl,
     submitActivationProof,
     fetchActivationStatus,
     navigate,
@@ -40,7 +44,17 @@ export const ActivatePage: React.FC = () => {
   const [senderName, setSenderName] = useState<string>('');
   const [txRef, setTxRef] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [compressedBlob, setCompressedBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState<boolean>(false);
+  const [compressionProgress, setCompressionProgress] = useState<number>(0);
+  const [compressionStatus, setCompressionStatus] = useState<string>('');
+  const [compressionStats, setCompressionStats] = useState<{
+    originalSize: number;
+    compressedSize: number;
+    reductionPercentage: number;
+  } | null>(null);
+
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -94,13 +108,41 @@ export const ActivatePage: React.FC = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      const objUrl = URL.createObjectURL(file);
-      setPreviewUrl(objUrl);
       setErrorMsg(null);
+      setCompressing(true);
+      setCompressionProgress(10);
+      setCompressionStatus('Reading screenshot...');
+
+      try {
+        const result = await compressImage(file, {
+          maxWidth: 1080,
+          quality: 0.7,
+          maxSizeKB: 800,
+          onProgress: (msg, pct) => {
+            setCompressionStatus(msg);
+            setCompressionProgress(pct);
+          },
+        });
+
+        setCompressedBlob(result.blob);
+        setPreviewUrl(result.previewUrl);
+        setCompressionStats({
+          originalSize: result.originalSize,
+          compressedSize: result.compressedSize,
+          reductionPercentage: result.reductionPercentage,
+        });
+      } catch (err: any) {
+        console.warn('Compression fallback to original file:', err);
+        setCompressedBlob(file);
+        setPreviewUrl(URL.createObjectURL(file));
+        setCompressionStats(null);
+      } finally {
+        setCompressing(false);
+      }
     }
   };
 
@@ -109,7 +151,7 @@ export const ActivatePage: React.FC = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    if (!selectedFile && !previewUrl) {
+    if (!compressedBlob && !selectedFile && !previewUrl) {
       setErrorMsg('Please select a screenshot or image proof of your transfer.');
       return;
     }
@@ -122,33 +164,71 @@ export const ActivatePage: React.FC = () => {
     setSubmitting(true);
 
     try {
-      const formData = new FormData();
-      formData.append('user_id', firebaseUser.uid);
-      formData.append('email', userEmail);
-      if (selectedFile) {
-        formData.append('proof', selectedFile);
-      }
-      formData.append('sender_name', senderName);
-      formData.append('reference', txRef);
+      let finalProofUrl = '';
+      const payloadBlob = compressedBlob || selectedFile;
 
-      const res = await submitActivationProof(formData);
+      // Fast Presigned URL direct upload flow
+      if (payloadBlob) {
+        const ext = selectedFile?.name?.split('.').pop() || 'jpg';
+        const filename = `proof_${Date.now()}.${ext}`;
+        const presigned = await requestPresignedUploadUrl(filename, 'image/jpeg', 'activation');
+
+        if (presigned.success && presigned.uploadUrl && presigned.publicUrl) {
+          // Upload directly to R2 / storage endpoint with PUT
+          const uploadRes = await uploadToPresignedUrl(
+            presigned.uploadUrl,
+            payloadBlob,
+            'image/jpeg'
+          );
+
+          if (uploadRes.success) {
+            finalProofUrl = presigned.publicUrl;
+          }
+        }
+      }
+
+      // Confirm upload with CDSure Tasks backend
+      let res: any;
+      if (finalProofUrl) {
+        res = await submitActivationProof({
+          user_id: firebaseUser.uid,
+          email: userEmail,
+          proof_image: finalProofUrl,
+          sender_name: senderName.trim(),
+          reference: txRef.trim(),
+        });
+      } else {
+        // Safe fallback using multipart form data
+        const formData = new FormData();
+        formData.append('user_id', firebaseUser.uid);
+        formData.append('email', userEmail);
+        if (selectedFile) {
+          formData.append('proof', payloadBlob || selectedFile);
+        }
+        formData.append('sender_name', senderName.trim());
+        formData.append('reference', txRef.trim());
+        res = await submitActivationProof(formData);
+      }
 
       if (res && res.success) {
         setPaymentStatus('pending');
         if (res.proof_image) setProofImage(res.proof_image);
         setSuccessMsg('Payment proof received! Admin is reviewing your transfer.');
         setSelectedFile(null);
+        setCompressedBlob(null);
         setPreviewUrl(null);
+        setCompressionStats(null);
         await loadStatus();
       } else {
-        setErrorMsg(res?.error || 'Submission failed. Please try again.');
+        setErrorMsg(res?.error || 'Could not upload proof. Please try again.');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Submission error. Please try again.');
+    } catch (_err) {
+      setErrorMsg('Could not upload proof. Please check your internet and try again.');
     } finally {
       setSubmitting(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-4 selection:bg-[#7C3AED] selection:text-white">
@@ -260,8 +340,9 @@ export const ActivatePage: React.FC = () => {
                 className="flex-1 py-2.5 px-3 bg-white hover:bg-amber-100/50 border border-amber-300 text-amber-900 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loadingStatus ? 'animate-spin' : ''}`} />
-                <span>Refresh Status</span>
+                <span>{loadingStatus ? 'Checking your activation...' : 'Refresh Status'}</span>
               </button>
+
 
               <button
                 type="button"
@@ -452,13 +533,47 @@ export const ActivatePage: React.FC = () => {
                   className="hidden"
                 />
 
+                {/* Live Compression Progress Indicator */}
+                {compressing && (
+                  <div className="mb-3 p-3.5 rounded-2xl bg-purple-50/80 border border-purple-200">
+                    <div className="flex items-center justify-between text-xs mb-1.5 font-bold text-purple-900">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-3.5 h-3.5 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />
+                        <span>{compressionStatus || 'Optimizing screenshot...'}</span>
+                      </div>
+                      <span className="text-[#7C3AED] font-black">{compressionProgress}%</span>
+                    </div>
+                    <div className="w-full bg-purple-200/60 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-[#7C3AED] h-1.5 rounded-full transition-all duration-200"
+                        style={{ width: `${compressionProgress}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-purple-700 mt-1.5 font-medium">
+                      Resizing to max 1080px width & 70% quality for lightning-fast submission.
+                    </p>
+                  </div>
+                )}
+
                 {previewUrl ? (
-                  <div className="relative rounded-2xl overflow-hidden border-2 border-purple-200 bg-slate-50 p-2 flex flex-col items-center">
+                  <div className="relative rounded-2xl overflow-hidden border-2 border-purple-200 bg-slate-50 p-2.5 flex flex-col items-center">
                     <img
                       src={previewUrl}
                       alt="Selected Screenshot"
-                      className="max-h-52 w-auto object-contain rounded-xl"
+                      className="max-h-52 w-auto object-contain rounded-xl shadow-sm"
                     />
+
+                    {/* Compression Optimization Stats Badge */}
+                    {compressionStats && (
+                      <div className="mt-2.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-1.5 text-xs text-emerald-800 font-medium">
+                        <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-500 shrink-0" />
+                        <span>
+                          Optimized: {(compressionStats.originalSize / 1024 / 1024).toFixed(1)}MB → {(compressionStats.compressedSize / 1024).toFixed(0)}KB{' '}
+                          <strong className="text-emerald-900 font-bold">({compressionStats.reductionPercentage}% smaller)</strong> — Ready for instant upload!
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 mt-2">
                       <button
                         type="button"
@@ -472,7 +587,9 @@ export const ActivatePage: React.FC = () => {
                         type="button"
                         onClick={() => {
                           setSelectedFile(null);
+                          setCompressedBlob(null);
                           setPreviewUrl(null);
+                          setCompressionStats(null);
                         }}
                         className="text-xs font-semibold text-red-500 hover:underline"
                       >
@@ -492,7 +609,7 @@ export const ActivatePage: React.FC = () => {
                       Click to upload transfer screenshot
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      JPG, PNG, WebP up to 10MB
+                      JPG, PNG, WebP — auto-optimized under 800KB for fast upload
                     </p>
                   </div>
                 )}
@@ -529,11 +646,19 @@ export const ActivatePage: React.FC = () => {
               {/* Submit Button (Purple #7C3AED) */}
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || compressing}
                 className="w-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-extrabold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-600/25 active:scale-[0.99] transition-all disabled:opacity-60 text-sm"
               >
                 {submitting ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Uploading your proof to CDSure Tasks...</span>
+                  </div>
+                ) : compressing ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Optimizing proof image...</span>
+                  </div>
                 ) : (
                   <>
                     <UploadCloud className="w-4 h-4" />

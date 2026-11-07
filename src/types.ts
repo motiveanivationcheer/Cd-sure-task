@@ -117,7 +117,44 @@ export interface UserProfile {
   is_verified: boolean;
   is_activated?: boolean | number;
   activation_paid_at?: string;
+  total_fees_paid?: number;
+  total_deposited?: number;
   createdAt?: any;
+}
+
+export interface TransactionRecord {
+  id: string;
+  userId: string;
+  role: 'employer' | 'earner';
+  type: 'deposit' | 'task_payment' | 'withdrawal' | 'refund' | 'task_earning';
+  grossAmount: number;
+  feePercent: number; // 30
+  feeAmount: number;
+  netAmount: number;
+  status: 'pending' | 'success' | 'failed';
+  createdAt: string;
+  reference?: string;
+  description?: string;
+}
+
+export interface PlatformEarningRecord {
+  id: string;
+  transactionId: string;
+  userId: string;
+  userEmail?: string;
+  userName?: string;
+  role: 'employer' | 'earner';
+  feeAmount: number;
+  grossAmount?: number;
+  source: string;
+  createdAt: string;
+}
+
+export interface PlatformEarningsSummary {
+  totalCombined: number;
+  totalEmployer: number;
+  totalEarner: number;
+  recentEarnings: PlatformEarningRecord[];
 }
 
 

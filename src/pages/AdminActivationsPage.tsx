@@ -276,7 +276,7 @@ export const AdminActivationsPage: React.FC = () => {
           {loading ? (
             <div className="p-12 text-center text-slate-400">
               <div className="w-6 h-6 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <p className="text-xs font-semibold">Loading activations...</p>
+              <p className="text-xs font-semibold">Loading CDSure activations...</p>
             </div>
           ) : filteredActivations.length === 0 ? (
             <div className="p-12 text-center text-slate-400">
